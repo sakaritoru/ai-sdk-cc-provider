@@ -1,0 +1,54 @@
+{
+  "name": "ai-sdk-cc-provider",
+  "version": "0.1.0",
+  "description": "Claude Code provider for Vercel AI SDK using @anthropic-ai/claude-code",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "bun test",
+    "lint": "biome lint src/",
+    "format": "biome format --write src/",
+    "check": "biome check src/",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "ai",
+    "anthropic",
+    "claude",
+    "computer-use",
+    "ai-sdk",
+    "vercel"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.0",
+    "ai": "^4.0.0",
+    "@ai-sdk/provider-utils": "^2.0.0"
+  },
+  "peerDependencies": {
+    "zod": "^3.23.8 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@types/bun": "^1.2.22",
+    "@types/node": "^20.0.0",
+    "@types/web": "^0.0.269",
+    "bun-types": "^1.2.22",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/ai-sdk-cc-provider.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/ai-sdk-cc-provider/issues"
+  },
+  "homepage": "https://github.com/yourusername/ai-sdk-cc-provider#readme"
+}
