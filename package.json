@@ -21,7 +21,7 @@
     "ai-sdk",
     "vercel"
   ],
-  "author": "Your Name <your.email@example.com>",
+  "author": "sakaritoru",
   "license": "MIT",
   "dependencies": {
     "@ai-sdk/provider-utils": "^3.0.9",

@@ -161,8 +161,17 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
     const warnings: LanguageModelV2CallWarning[] = [];
 
     const self = this;
+    let hasStartedTextBlock = false;
+    const textBlockId = '0';
+
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       async start(controller) {
+        // Start with stream-start event like OpenAI
+        controller.enqueue({
+          type: 'stream-start',
+          warnings,
+        });
+
         try {
           for await (const message of query({
             prompt: claudeCodePrompt,
@@ -172,13 +181,38 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
               const partialMessage = message as SDKPartialAssistantMessage;
               const event = partialMessage.event;
 
-              if (event.type === 'content_block_delta') {
+              if (event.type === 'content_block_start') {
+                if (event.content_block?.type === 'text') {
+                  controller.enqueue({
+                    type: 'text-start',
+                    id: textBlockId,
+                  });
+                  hasStartedTextBlock = true;
+                }
+              } else if (event.type === 'content_block_delta') {
                 if (event.delta?.type === 'text_delta') {
+                  // Ensure text block is started
+                  if (!hasStartedTextBlock) {
+                    controller.enqueue({
+                      type: 'text-start',
+                      id: textBlockId,
+                    });
+                    hasStartedTextBlock = true;
+                  }
+
                   controller.enqueue({
                     type: 'text-delta',
-                    id: 'text-block',
+                    id: textBlockId,
                     delta: event.delta.text,
                   });
+                }
+              } else if (event.type === 'content_block_stop') {
+                if (hasStartedTextBlock) {
+                  controller.enqueue({
+                    type: 'text-end',
+                    id: textBlockId,
+                  });
+                  hasStartedTextBlock = false;
                 }
               }
               // Don't emit tool-call-delta events to avoid AI SDK tool registration issues
@@ -193,6 +227,15 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
               };
               warnings.push(...self.extractWarnings(resultMessage));
 
+              // Ensure text block is properly closed
+              if (hasStartedTextBlock) {
+                controller.enqueue({
+                  type: 'text-end',
+                  id: textBlockId,
+                });
+                hasStartedTextBlock = false;
+              }
+
               controller.enqueue({
                 type: 'finish',
                 finishReason,
@@ -202,6 +245,14 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
             }
           }
         } catch (error) {
+          // Ensure text block is properly closed on error
+          if (hasStartedTextBlock) {
+            controller.enqueue({
+              type: 'text-end',
+              id: textBlockId,
+            });
+          }
+
           controller.enqueue({
             type: 'error',
             error,
