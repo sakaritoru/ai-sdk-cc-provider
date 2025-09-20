@@ -7,35 +7,33 @@ import type {
   Options as ClaudeCodeOptions,
 } from '@anthropic-ai/claude-code';
 import {
-  LanguageModelV1,
-  LanguageModelV1CallWarning,
-  LanguageModelV1FinishReason,
-  LanguageModelV1StreamPart,
-  LanguageModelV1Prompt,
+  LanguageModelV2,
+  LanguageModelV2CallWarning,
+  LanguageModelV2FinishReason,
+  LanguageModelV2StreamPart,
+  LanguageModelV2Prompt,
 } from '@ai-sdk/provider';
 import { FetchFunction } from '@ai-sdk/provider-utils';
 import { ClaudeCodeProviderSettings } from './types';
 
-export class ClaudeCodeLanguageModel implements LanguageModelV1 {
-  readonly specificationVersion = 'v1';
+export class ClaudeCodeLanguageModel implements LanguageModelV2 {
+  readonly specificationVersion = 'v2';
   readonly defaultObjectGenerationMode = undefined;
   readonly provider = 'claude-code';
+  readonly supportedUrls = {};
 
   readonly modelId: string;
   readonly settings: ClaudeCodeProviderSettings;
 
   constructor(
     modelId: string,
-    settings: ClaudeCodeProviderSettings = {},
-    config?: {
-      fetch?: FetchFunction;
-    }
+    settings: ClaudeCodeProviderSettings = {}
   ) {
     this.modelId = modelId;
     this.settings = settings;
   }
 
-  private convertPromptToClaudeCodeFormat(prompt: LanguageModelV1Prompt): string {
+  private convertPromptToClaudeCodeFormat(prompt: LanguageModelV2Prompt): string {
     // Convert AI SDK prompt to simple string for Claude Code
     return prompt
       .map((message) => {
@@ -56,7 +54,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
 
   private mapFinishReason(
     resultMessage: SDKResultMessage
-  ): LanguageModelV1FinishReason {
+  ): LanguageModelV2FinishReason {
     if (resultMessage.subtype === 'error_max_turns') {
       return 'length';
     }
@@ -68,8 +66,8 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
 
   private extractWarnings(
     resultMessage: SDKResultMessage
-  ): LanguageModelV1CallWarning[] {
-    const warnings: LanguageModelV1CallWarning[] = [];
+  ): LanguageModelV2CallWarning[] {
+    const warnings: LanguageModelV2CallWarning[] = [];
 
     if (resultMessage.permission_denials.length > 0) {
       warnings.push({
@@ -83,7 +81,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
     return warnings;
   }
 
-  async doGenerate(options: Parameters<LanguageModelV1['doGenerate']>[0]) {
+  async doGenerate(options: Parameters<LanguageModelV2['doGenerate']>[0]) {
     const { prompt, ...restOptions } = options;
 
     const claudeCodePrompt = this.convertPromptToClaudeCodeFormat(prompt);
@@ -91,7 +89,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
     const claudeCodeOptions: ClaudeCodeOptions = {
       ...this.settings.options,
       model: this.modelId,
-      maxTurns: restOptions.maxTokens ? Math.ceil(restOptions.maxTokens / 100) : undefined,
+      maxTurns: restOptions.maxOutputTokens ? Math.ceil(restOptions.maxOutputTokens / 100) : undefined,
       abortController: new AbortController(),
     };
 
@@ -118,19 +116,24 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
       // Claude Code handles tools internally, so we don't return toolCalls to AI SDK
       // This prevents the "Model tried to call unavailable tool" error
 
+      // V2 requires content array instead of text string
+      const content = resultMessage.subtype === 'success' && resultMessage.result ? [{
+        type: 'text' as const,
+        text: resultMessage.result,
+      }] : [];
+
       return {
-        text: resultMessage.subtype === 'success' ? resultMessage.result : '',
-        // Don't return toolCalls to avoid AI SDK tool registration issues
+        content,
         finishReason: this.mapFinishReason(resultMessage),
         usage: {
-          promptTokens: resultMessage.usage.input_tokens,
-          completionTokens: resultMessage.usage.output_tokens,
+          inputTokens: resultMessage.usage.input_tokens,
+          outputTokens: resultMessage.usage.output_tokens,
+          totalTokens: resultMessage.usage.input_tokens + resultMessage.usage.output_tokens,
         },
-        rawCall: {
-          rawPrompt: claudeCodePrompt,
-          rawSettings: claudeCodeOptions,
+        request: {
+          body: claudeCodeOptions,
         },
-        rawResponse: {
+        response: {
           headers: {},
         },
         warnings: this.extractWarnings(resultMessage),
@@ -140,7 +143,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
     }
   }
 
-  async doStream(options: Parameters<LanguageModelV1['doStream']>[0]) {
+  async doStream(options: Parameters<LanguageModelV2['doStream']>[0]) {
     const { prompt, ...restOptions } = options;
 
     const claudeCodePrompt = this.convertPromptToClaudeCodeFormat(prompt);
@@ -148,17 +151,17 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
     const claudeCodeOptions: ClaudeCodeOptions = {
       ...this.settings.options,
       model: this.modelId,
-      maxTurns: restOptions.maxTokens ? Math.ceil(restOptions.maxTokens / 100) : undefined,
+      maxTurns: restOptions.maxOutputTokens ? Math.ceil(restOptions.maxOutputTokens / 100) : undefined,
       includePartialMessages: true,
       abortController: new AbortController(),
     };
 
-    let finishReason: LanguageModelV1FinishReason = 'unknown';
-    let usage = { promptTokens: 0, completionTokens: 0 };
-    const warnings: LanguageModelV1CallWarning[] = [];
+    let finishReason: LanguageModelV2FinishReason = 'unknown';
+    let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    const warnings: LanguageModelV2CallWarning[] = [];
 
     const self = this;
-    const stream = new ReadableStream<LanguageModelV1StreamPart>({
+    const stream = new ReadableStream<LanguageModelV2StreamPart>({
       async start(controller) {
         try {
           for await (const message of query({
@@ -173,7 +176,8 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
                 if (event.delta?.type === 'text_delta') {
                   controller.enqueue({
                     type: 'text-delta',
-                    textDelta: event.delta.text,
+                    id: 'text-block',
+                    delta: event.delta.text,
                   });
                 }
               }
@@ -183,8 +187,9 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
               const resultMessage = message as SDKResultMessage;
               finishReason = self.mapFinishReason(resultMessage);
               usage = {
-                promptTokens: resultMessage.usage.input_tokens,
-                completionTokens: resultMessage.usage.output_tokens,
+                inputTokens: resultMessage.usage.input_tokens,
+                outputTokens: resultMessage.usage.output_tokens,
+                totalTokens: resultMessage.usage.input_tokens + resultMessage.usage.output_tokens,
               };
               warnings.push(...self.extractWarnings(resultMessage));
 
@@ -192,7 +197,6 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
                 type: 'finish',
                 finishReason,
                 usage,
-                logprobs: undefined,
               });
               break;
             }
@@ -210,11 +214,10 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
 
     return {
       stream,
-      rawCall: {
-        rawPrompt: claudeCodePrompt,
-        rawSettings: claudeCodeOptions,
+      request: {
+        body: claudeCodeOptions,
       },
-      rawResponse: {
+      response: {
         headers: {},
       },
       warnings,

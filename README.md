@@ -1,6 +1,8 @@
 # AI SDK Claude Code Provider
 
-A Claude Code provider for Vercel AI SDK using @anthropic-ai/claude-code. This provider enables Claude to perform development tasks through file operations, bash commands, web search, and other code-related tools.
+A provider for [Vercel AI SDK](https://sdk.vercel.ai/) that enables the use of [Claude Code](https://claude.ai/code) with file operations, bash commands, and development tools.
+
+> **Note**: This provider now supports AI SDK v5 with LanguageModelV2 specification.
 
 ## Features
 
@@ -183,9 +185,9 @@ ANTHROPIC_API_KEY=your_api_key_here
 ## Requirements
 
 - Node.js 18+ or Bun
-- Claude Code installed and configured
-- `ai` package (peer dependency)
-- Anthropic API key
+- [Claude Code CLI](https://claude.ai/code) installed and configured
+- AI SDK v5+ (`ai` package - peer dependency)
+- Valid Anthropic API key
 
 ## Setup
 
