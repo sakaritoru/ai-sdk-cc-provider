@@ -2,7 +2,7 @@
 
 A provider for [Vercel AI SDK](https://sdk.vercel.ai/) that enables the use of [Claude Code](https://claude.ai/code) with file operations, bash commands, and development tools.
 
-> **Note**: This provider now supports AI SDK v5 with LanguageModelV2 specification.
+> **Note**: This provider supports AI SDK v5 with LanguageModelV2 specification.
 
 ## Features
 
@@ -10,7 +10,8 @@ A provider for [Vercel AI SDK](https://sdk.vercel.ai/) that enables the use of [
 - 📁 **File Operations**: Read, write, and edit files with precision
 - 🖥️ **Bash Commands**: Execute shell commands and scripts
 - 🔍 **Web Search**: Search and fetch web content
-- 🔄 **Streaming Support**: Real-time response streaming
+- 🔄 **Streaming Support**: Real-time response streaming with reasoning-delta
+- 🧠 **Reasoning Stream**: Support for thinking/reasoning deltas like OpenAI o1
 - 🛡️ **Type Safety**: Full TypeScript support with comprehensive type definitions
 - ⚡ **AI SDK Compatible**: Works seamlessly with Vercel's AI SDK ecosystem
 
@@ -67,6 +68,7 @@ const model = provider('claude-3-5-sonnet-20241022', {
 |--------|------|-------------|
 | `cwd` | `string` | Working directory for file operations |
 | `maxTurns` | `number` | Maximum number of conversation turns |
+| `maxThinkingTokens` | `number` | Maximum tokens for reasoning/thinking mode |
 | `allowedTools` | `string[]` | Specific tools to enable |
 | `disallowedTools` | `string[]` | Tools to disable |
 | `additionalDirectories` | `string[]` | Additional directories to access |
@@ -121,21 +123,28 @@ const result = await generateText({
 });
 ```
 
-### Streaming with Development Tasks
+### Streaming with Reasoning Support
 ```typescript
 import { streamText } from 'ai';
 import { claudeCode } from 'ai-sdk-cc-provider';
 
-const { textStream } = await streamText({
+const { textStream, reasoningStream } = await streamText({
   model: claudeCode('claude-3-5-sonnet-20241022', {
     options: {
       maxTurns: 10,
+      maxThinkingTokens: 10000, // Enable reasoning mode
       includePartialMessages: true,
     },
   }),
-  prompt: 'Help me set up a new TypeScript project with proper configuration',
+  prompt: 'Think through this complex problem step by step...',
 });
 
+// Stream reasoning deltas (thinking process)
+for await (const reasoningPart of reasoningStream || []) {
+  console.log('Thinking:', reasoningPart.delta);
+}
+
+// Stream final text output
 for await (const textPart of textStream) {
   process.stdout.write(textPart);
 }
@@ -158,7 +167,7 @@ const model = claudeCode('claude-3-5-sonnet-20241022', {
 });
 ```
 
-### Legal Assistant Example
+### Reasoning Mode Example
 ```typescript
 import { generateText } from 'ai';
 import { claudeCode } from 'ai-sdk-cc-provider';
@@ -166,12 +175,15 @@ import { claudeCode } from 'ai-sdk-cc-provider';
 const result = await generateText({
   model: claudeCode('claude-3-5-sonnet-20241022', {
     options: {
-      customSystemPrompt: 'You are a legal assistant. Help identify risks and suggest improvements.',
-      maxTurns: 2,
+      maxThinkingTokens: 20000, // Enable extended reasoning
+      maxTurns: 3,
     },
   }),
-  prompt: 'Review this contract clause for potential issues: "Parties agree to unlimited liability..."',
+  prompt: 'Analyze this complex algorithm and suggest optimizations...',
 });
+
+console.log('Final answer:', result.text);
+console.log('Reasoning tokens used:', result.usage?.reasoningTokens);
 ```
 
 ## Environment Variables
@@ -221,11 +233,15 @@ export interface ClaudeCodeProviderSettings {
   options?: ClaudeCodeOptions;
 }
 
-export interface ClaudeCodeToolConfig {
-  enabledTools?: string[];
-  disabledTools?: string[];
-  mcpServers?: Record<string, any>;
+export interface ClaudeCodeOptions {
+  cwd?: string;
+  maxTurns?: number;
+  maxThinkingTokens?: number; // Enable reasoning mode
+  allowedTools?: string[];
+  disallowedTools?: string[];
   additionalDirectories?: string[];
+  mcpServers?: Record<string, any>;
+  includePartialMessages?: boolean;
 }
 ```
 
