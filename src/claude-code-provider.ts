@@ -152,6 +152,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
       ...this.settings.options,
       model: this.modelId,
       maxTurns: restOptions.maxOutputTokens ? Math.ceil(restOptions.maxOutputTokens / 100) : undefined,
+      maxThinkingTokens: this.settings.options?.maxThinkingTokens,
       includePartialMessages: true,
       abortController: new AbortController(),
     };
@@ -162,7 +163,9 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
 
     const self = this;
     let hasStartedTextBlock = false;
+    let hasStartedThinkingBlock = false;
     const textBlockId = '0';
+    const thinkingBlockId = `thinking-${textBlockId}`;
 
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       async start(controller) {
@@ -205,6 +208,27 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                     id: textBlockId,
                     delta: event.delta.text,
                   });
+                } else if (event.delta?.type === 'thinking_delta') {
+                  // Start thinking block if not already started
+                  if (!hasStartedThinkingBlock) {
+                    controller.enqueue({
+                      type: 'reasoning-start',
+                      id: thinkingBlockId,
+                    });
+                    hasStartedThinkingBlock = true;
+                  }
+
+                  // Handle thinking deltas for reasoning stream
+                  controller.enqueue({
+                    type: 'reasoning-delta',
+                    id: thinkingBlockId,
+                    delta: event.delta.thinking,
+                    providerMetadata: {
+                      'claude-code': {
+                        eventType: 'thinking_delta'
+                      }
+                    }
+                  });
                 }
               } else if (event.type === 'content_block_stop') {
                 if (hasStartedTextBlock) {
@@ -236,6 +260,15 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                 hasStartedTextBlock = false;
               }
 
+              // Ensure thinking block is properly closed
+              if (hasStartedThinkingBlock) {
+                controller.enqueue({
+                  type: 'reasoning-end',
+                  id: thinkingBlockId,
+                });
+                hasStartedThinkingBlock = false;
+              }
+
               controller.enqueue({
                 type: 'finish',
                 finishReason,
@@ -250,6 +283,14 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
             controller.enqueue({
               type: 'text-end',
               id: textBlockId,
+            });
+          }
+
+          // Ensure thinking block is properly closed on error
+          if (hasStartedThinkingBlock) {
+            controller.enqueue({
+              type: 'reasoning-end',
+              id: thinkingBlockId,
             });
           }
 
