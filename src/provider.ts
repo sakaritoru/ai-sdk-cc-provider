@@ -1,7 +1,8 @@
 import type { LanguageModelV2 } from '@ai-sdk/provider';
 import type { FetchFunction } from '@ai-sdk/provider-utils';
-import { ClaudeCodeLanguageModel } from './claude-code-provider';
-import type { ClaudeCodeProviderSettings } from './types';
+import { ClaudeCodeLanguageModel } from './claude-code-provider.js';
+import type { ClaudeCodeProviderSettings } from './types.js';
+import { claudeCodeTools } from './tools.js';
 
 export interface ClaudeCodeProvider {
   (
@@ -13,6 +14,8 @@ export interface ClaudeCodeProvider {
     modelId: string,
     settings?: ClaudeCodeProviderSettings
   ) => LanguageModelV2;
+
+  tools: typeof claudeCodeTools;
 }
 
 export interface ClaudeCodeProviderConfig {
@@ -30,6 +33,7 @@ export function createClaudeCode(
   };
 
   provider.languageModel = provider;
+  provider.tools = claudeCodeTools;
 
   return provider;
 }

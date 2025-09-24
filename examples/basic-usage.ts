@@ -27,7 +27,7 @@ async function basicExample() {
 async function streamingExample() {
   console.log('\nStreaming Claude Code example...');
 
-  const { textStream } = await streamText({
+  const { textStream, toolCalls, toolResults } = await streamText({
     model: claudeCode('claude-3-5-sonnet-20241022', {
       options: {
         maxTurns: 5,
@@ -43,6 +43,22 @@ async function streamingExample() {
   for await (const textPart of textStream) {
     process.stdout.write(textPart);
   }
+
+  const t = await toolResults;
+
+  for (const call of await toolCalls) {
+    console.log('\n\nTool call:', call.toolName);
+    console.log('Arguments:', call.input);
+  }
+
+  for (const result of await toolResults) {
+    console.log('\nTool result for call ID', result.toolCallId);
+    console.log('Output:', result.output);
+  }
+
+  console.log('\n\nTotal tool calls:', (await toolCalls).length);
+  console.log('Total tool results:', t.length);
+
   console.log('\n');
 }
 
@@ -87,8 +103,8 @@ async function simpleExample() {
 async function main() {
   try {
     // まず簡単な例から試す
-    await simpleExample();
-    await legalAssistantExample();
+    // await simpleExample();
+    // await legalAssistantExample();
 
     // 次にファイルアクセスが必要な例（Claude Code環境が必要）
     console.log('\n--- File access examples (require Claude Code setup) ---');

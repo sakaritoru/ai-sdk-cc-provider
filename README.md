@@ -25,9 +25,11 @@ bun add ai-sdk-cc-provider
 
 ## Quick Start
 
+### Basic Usage
+
 ```typescript
 import { generateText } from 'ai';
-import { claudeCode } from 'ai-sdk-cc-provider';
+import { claudeCode, getCommonClaudeCodeTools } from 'ai-sdk-cc-provider';
 
 const result = await generateText({
   model: claudeCode('claude-3-5-sonnet-20241022', {
@@ -36,11 +38,49 @@ const result = await generateText({
       maxTurns: 3,
     },
   }),
+  tools: getCommonClaudeCodeTools(), // Read, Bash, Grep, Glob
   prompt: 'Help me create a simple React component',
 });
 
 console.log(result.text);
-console.log(result.toolCalls);
+```
+
+### With Specific Tools (Direct Access)
+
+```typescript
+import { generateText } from 'ai';
+import { claudeCode } from 'ai-sdk-cc-provider';
+
+const result = await generateText({
+  model: claudeCode('claude-3-5-sonnet-20241022'),
+  tools: {
+    Read: claudeCode.tools.Read,
+    Write: claudeCode.tools.Write,
+    Bash: claudeCode.tools.Bash,
+  },
+  prompt: 'Read package.json and create a summary',
+});
+```
+
+### Alternative Import Methods
+
+```typescript
+// Method 1: Direct access via claudeCode.tools
+tools: {
+  Read: claudeCode.tools.Read,
+  Bash: claudeCode.tools.Bash,
+}
+
+// Method 2: Import individual tools
+import { claudeCodeTools } from 'ai-sdk-cc-provider';
+tools: {
+  Read: claudeCodeTools.Read,
+  Bash: claudeCodeTools.Bash,
+}
+
+// Method 3: Use utility functions
+import { getCommonClaudeCodeTools } from 'ai-sdk-cc-provider';
+tools: getCommonClaudeCodeTools()
 ```
 
 ## Configuration
@@ -84,41 +124,92 @@ This provider works with Claude models available through Claude Code:
 
 ## Available Tools
 
-Claude Code automatically provides access to these development tools:
+This provider includes pre-defined Zod schemas for all Claude Code built-in tools:
 
-### File Operations
-- **file_read**: Read file contents
-- **file_write**: Write content to files
-- **file_edit**: Edit existing files
-- **file_multi_edit**: Make multiple edits to a file
+### Tool Collections
 
-### Development Tools
-- **bash**: Execute shell commands
-- **grep**: Search file contents
-- **glob**: Find files by pattern
+```typescript
+import {
+  getCommonClaudeCodeTools,    // Read, Write, Bash, Glob, Grep
+  getFileTools,               // Read, Write, Edit, MultiEdit
+  getSearchTools,             // Glob, Grep
+  getExecutionTools,          // Bash, BashOutput, KillShell
+  getWebTools,               // WebFetch, WebSearch
+  getProjectTools,           // Task, TodoWrite
+  getAllClaudeCodeTools,     // All 13 standard tools
+  claudeCodeTools,           // All individual tools
+} from 'ai-sdk-cc-provider';
+```
 
-### Web Tools
-- **web_search**: Search the web
-- **web_fetch**: Fetch content from URLs
+### Standard Tools by Category
 
-### Project Management
-- **todo_write**: Manage task lists
-- **agent**: Launch specialized sub-agents
+**File Operations**
+- **Read**: Read file contents with optional offset/limit
+- **Write**: Write content to files
+- **Edit**: Perform exact string replacements
+- **MultiEdit**: Make multiple edits to a file in one operation
+
+**Search & Exploration**
+- **Glob**: Fast file pattern matching
+- **Grep**: Powerful search with ripgrep (supports regex, file filtering)
+
+**Execution Environment**
+- **Bash**: Execute shell commands with optional background mode
+- **BashOutput**: Retrieve output from running/completed background shells
+- **KillShell**: Terminate background bash shells by ID
+
+**Specialized Agents**
+- **Task**: Launch specialized sub-agents for complex multi-step tasks
+
+**Web Tools**
+- **WebFetch**: Fetch and process web content
+- **WebSearch**: Search the web with domain filtering
+
+**Task Management**
+- **TodoWrite**: Create and manage structured task lists for coding sessions
+
+### Tool Access Patterns
+
+```typescript
+// Direct access (recommended)
+tools: {
+  Read: claudeCode.tools.Read,
+  Bash: claudeCode.tools.Bash,
+}
+
+// Utility functions
+tools: getCommonClaudeCodeTools()
+tools: getAllClaudeCodeTools() // All 13 tools
+
+// Import individual tools
+tools: {
+  Read: claudeCodeTools.Read,
+  Bash: claudeCodeTools.Bash,
+}
+
+// Mix and match
+tools: {
+  ...getFileTools(),
+  ...getProjectTools(),
+  WebSearch: claudeCode.tools.WebSearch,
+}
+```
 
 ## Examples
 
 ### Basic File Operations
 ```typescript
 import { generateText } from 'ai';
-import { claudeCode } from 'ai-sdk-cc-provider';
+import { claudeCode, getFileTools } from 'ai-sdk-cc-provider';
 
 const result = await generateText({
   model: claudeCode('claude-3-5-sonnet-20241022', {
     options: {
       cwd: './src',
-      allowedTools: ['file_read', 'file_write'],
+      allowedTools: ['Read', 'Write', 'Edit'],
     },
   }),
+  tools: getFileTools(),
   prompt: 'Read the package.json file and create a simple README.md',
 });
 ```
@@ -186,6 +277,18 @@ console.log('Final answer:', result.text);
 console.log('Reasoning tokens used:', result.usage?.reasoningTokens);
 ```
 
+### Get All Tools at Once
+
+```typescript
+import { getAllClaudeCodeTools } from 'ai-sdk-cc-provider';
+
+const result = await generateText({
+  model: claudeCode('claude-3-5-sonnet-20241022'),
+  tools: getAllClaudeCodeTools(), // All 13 standard tools
+  prompt: 'Help me analyze and refactor my codebase',
+});
+```
+
 ## Environment Variables
 
 Claude Code will automatically use your configured Anthropic API key. You can also set:
@@ -217,9 +320,8 @@ claude-code auth
 ```typescript
 const model = claudeCode('claude-3-5-sonnet-20241022', {
   options: {
-    permissionMode: 'bypassPermissions', // For development
+    cwd: process.cwd(),
     additionalDirectories: [process.cwd()],
-    allowedTools: ['file_read', 'file_write', 'bash'],
   },
 });
 ```
@@ -253,21 +355,24 @@ If you get errors like `AI_NoSuchToolError: Model tried to call unavailable tool
 
 1. **Text-only usage**: For simple text generation without tools:
 ```typescript
-const model = claudeCode('claude-3-5-sonnet-20241022', {
-  options: {
-    allowedTools: [], // No tools needed for text-only
-  },
+const result = await generateText({
+  model: claudeCode('claude-3-5-sonnet-20241022'),
+  // No tools property needed for text-only
+  prompt: 'Explain how React hooks work',
 });
 ```
 
 2. **File operations**: Ensure Claude Code is properly set up:
 ```typescript
-const model = claudeCode('claude-3-5-sonnet-20241022', {
-  options: {
-    permissionMode: 'bypassPermissions',
-    additionalDirectories: [process.cwd()],
-    allowedTools: ['file_read', 'file_write', 'bash', 'glob'],
-  },
+const result = await generateText({
+  model: claudeCode('claude-3-5-sonnet-20241022', {
+    options: {
+      cwd: process.cwd(),
+      additionalDirectories: [process.cwd()],
+    },
+  }),
+  tools: getFileTools(),
+  prompt: 'Read and analyze my package.json',
 });
 ```
 
@@ -280,9 +385,8 @@ claude-code auth
 
 ### Common Issues
 
-- **Permission denied**: Use `permissionMode: 'bypassPermissions'` for development
 - **File not found**: Add directories to `additionalDirectories`
-- **Tool not available**: Check `allowedTools` array includes required tools
+- **Tool not available**: Make sure you're importing and using the correct tools
 
 ## License
 

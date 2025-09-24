@@ -4,6 +4,7 @@ import type {
   SDKAssistantMessage,
   SDKResultMessage,
   SDKPartialAssistantMessage,
+  SDKUserMessage,
   Options as ClaudeCodeOptions,
 } from '@anthropic-ai/claude-code';
 import {
@@ -13,14 +14,34 @@ import {
   LanguageModelV2StreamPart,
   LanguageModelV2Prompt,
 } from '@ai-sdk/provider';
-import { FetchFunction } from '@ai-sdk/provider-utils';
-import { ClaudeCodeProviderSettings } from './types';
+import { ClaudeCodeProviderSettings } from './types.js';
+
+// Type definitions for Claude Code API structures
+interface BetaToolUseBlock {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+interface BetaToolResultBlock {
+  type: 'tool_result';
+  tool_use_id: string;
+  content: string | unknown;
+}
+
+interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
 
 export class ClaudeCodeLanguageModel implements LanguageModelV2 {
   readonly specificationVersion = 'v2';
   readonly defaultObjectGenerationMode = undefined;
   readonly provider = 'claude-code';
   readonly supportedUrls = {};
+  readonly supportsInternalToolHandling = true;
 
   readonly modelId: string;
   readonly settings: ClaudeCodeProviderSettings;
@@ -33,9 +54,9 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
     this.settings = settings;
   }
 
-  private convertPromptToClaudeCodeFormat(prompt: LanguageModelV2Prompt): string {
+  private convertPromptToClaudeCodeFormat(prompt: LanguageModelV2Prompt, tools?: unknown[]): string {
     // Convert AI SDK prompt to simple string for Claude Code
-    return prompt
+    let promptText = prompt
       .map((message) => {
         if (typeof message.content === 'string') {
           return `${message.role}: ${message.content}`;
@@ -43,13 +64,25 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
 
         // Handle complex content with parts
         const textParts = message.content
-          .filter((part: any) => part.type === 'text')
-          .map((part: any) => part.text)
+          .filter((part) => part.type === 'text')
+          .map((part) => 'text' in part ? part.text : '')
           .join(' ');
 
         return `${message.role}: ${textParts}`;
       })
       .join('\n');
+
+    // Add tool descriptions if provided
+    if (tools && tools.length > 0) {
+      const toolDescriptions = tools.map(tool => {
+        const t = tool as ToolDefinition;
+        return `Tool: ${t.name}\nDescription: ${t.description}\nParameters: ${JSON.stringify(t.parameters, null, 2)}`;
+      }).join('\n\n');
+
+      promptText += `\n\nAvailable tools:\n${toolDescriptions}\n\nUse these tools when appropriate by calling them in your response.`;
+    }
+
+    return promptText;
   }
 
   private mapFinishReason(
@@ -82,9 +115,9 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
   }
 
   async doGenerate(options: Parameters<LanguageModelV2['doGenerate']>[0]) {
-    const { prompt, ...restOptions } = options;
+    const { prompt, tools, ...restOptions } = options;
 
-    const claudeCodePrompt = this.convertPromptToClaudeCodeFormat(prompt);
+    const claudeCodePrompt = this.convertPromptToClaudeCodeFormat(prompt, tools);
 
     const claudeCodeOptions: ClaudeCodeOptions = {
       ...this.settings.options,
@@ -101,6 +134,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
         prompt: claudeCodePrompt,
         options: claudeCodeOptions,
       })) {
+        // console.log('DEBUG: Non-streaming message from Claude Code:', message.type, JSON.stringify(message, null, 2));
         messages.push(message);
 
         if (message.type === 'result') {
@@ -113,8 +147,8 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
         throw new Error('No result received from Claude Code');
       }
 
-      // Claude Code handles tools internally, so we don't return toolCalls to AI SDK
-      // This prevents the "Model tried to call unavailable tool" error
+      // Claude Code handles tools internally, but we can extract tool calls from the result
+      // for compatibility with AI SDK expectations
 
       // V2 requires content array instead of text string
       const content = resultMessage.subtype === 'success' && resultMessage.result ? [{
@@ -122,7 +156,62 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
         text: resultMessage.result,
       }] : [];
 
-      return {
+      // Extract any tool calls from the messages for toolCalls array
+      console.log('NON-STREAM: Extracting tool calls from', messages.filter(msg => msg.type === 'assistant').length, 'assistant messages');
+
+      const toolCalls = messages
+        .filter(msg => msg.type === 'assistant')
+        .flatMap((msg, msgIndex) => {
+          const assistantMsg = msg as SDKAssistantMessage;
+          const toolUseBlocks = assistantMsg.message.content?.filter(block => block.type === 'tool_use') || [];
+
+          console.log(`NON-STREAM: Assistant message ${msgIndex} has ${toolUseBlocks.length} tool_use blocks`);
+
+          return toolUseBlocks.map((block, blockIndex) => {
+              const toolUse = block as BetaToolUseBlock;
+              console.log(`NON-STREAM: Tool use ${msgIndex}-${blockIndex}:`, toolUse.name, toolUse.id, 'input keys:', Object.keys(toolUse.input || {}));
+
+              return {
+                type: 'tool-call' as const,
+                toolCallId: toolUse.id,
+                toolName: toolUse.name,
+                input: JSON.stringify(toolUse.input || {}),
+              };
+            });
+        });
+
+      // Extract tool results for non-streaming mode (from user messages)
+      console.log('NON-STREAM: Extracting tool results from', messages.filter(msg => msg.type === 'user').length, 'user messages');
+
+      const toolResults = messages
+        .filter(msg => msg.type === 'user')
+        .flatMap((msg, msgIndex) => {
+          const userMsg = msg as SDKUserMessage;
+          const messageContent = userMsg.message.content;
+          const toolResultBlocks = Array.isArray(messageContent) ?
+            messageContent.filter((block) => typeof block === 'object' && 'type' in block && block.type === 'tool_result') : [];
+
+          console.log(`NON-STREAM: User message ${msgIndex} has ${toolResultBlocks.length} tool_result blocks`);
+
+          return toolResultBlocks.map((block, blockIndex: number) => {
+              const toolResult = block as BetaToolResultBlock;
+              console.log(`NON-STREAM: Tool result ${msgIndex}-${blockIndex}:`, toolResult.tool_use_id, 'content type:', typeof toolResult.content);
+
+              return {
+                type: 'tool-result' as const,
+                toolCallId: toolResult.tool_use_id || 'unknown',
+                toolName: 'unknown', // We'll need to track tool names
+                result: typeof toolResult.content === 'string' ?
+                  toolResult.content :
+                  JSON.stringify(toolResult.content || toolResult),
+              };
+            });
+        });
+
+      console.log('DEBUG: Non-streaming mode - toolCalls:', toolCalls.length, 'toolResults:', toolResults.length);
+
+      // Log the full return object for debugging
+      const returnObject = {
         content,
         finishReason: this.mapFinishReason(resultMessage),
         usage: {
@@ -130,6 +219,8 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
           outputTokens: resultMessage.usage.output_tokens,
           totalTokens: resultMessage.usage.input_tokens + resultMessage.usage.output_tokens,
         },
+        toolCalls,
+        toolResults,
         request: {
           body: claudeCodeOptions,
         },
@@ -138,15 +229,18 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
         },
         warnings: this.extractWarnings(resultMessage),
       };
+
+      // console.log('DEBUG: Provider returning:', JSON.stringify(returnObject, null, 2));
+      return returnObject;
     } catch (error) {
       throw new Error(`Claude Code API error: ${error}`);
     }
   }
 
   async doStream(options: Parameters<LanguageModelV2['doStream']>[0]) {
-    const { prompt, ...restOptions } = options;
+    const { prompt, tools, ...restOptions } = options;
 
-    const claudeCodePrompt = this.convertPromptToClaudeCodeFormat(prompt);
+    const claudeCodePrompt = this.convertPromptToClaudeCodeFormat(prompt, tools);
 
     const claudeCodeOptions: ClaudeCodeOptions = {
       ...this.settings.options,
@@ -167,6 +261,9 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
     const textBlockId = '0';
     const thinkingBlockId = `thinking-${textBlockId}`;
 
+    // Track tool blocks by index for proper ID mapping
+    const toolBlockIds = new Map<number, string>();
+
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       async start(controller) {
         // Start with stream-start event like OpenAI
@@ -180,10 +277,13 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
             prompt: claudeCodePrompt,
             options: claudeCodeOptions,
           })) {
+            // console.log('DEBUG: Raw message from Claude Code:', message.type, JSON.stringify(message, null, 2));
+
             if (message.type === 'stream_event') {
               const partialMessage = message as SDKPartialAssistantMessage;
               const event = partialMessage.event;
 
+              try {
               if (event.type === 'content_block_start') {
                 if (event.content_block?.type === 'text') {
                   controller.enqueue({
@@ -191,6 +291,18 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                     id: textBlockId,
                   });
                   hasStartedTextBlock = true;
+                } else if (event.content_block?.type === 'tool_use') {
+                  // STREAM: Store tool mapping but skip tool-input events to avoid parsing issues
+                  console.log('STREAM: Tool use start detected:', event.content_block.name, event.content_block.id, 'at index:', event.index);
+
+                  // Store the mapping between index and tool block ID
+                  if (event.index !== undefined) {
+                    toolBlockIds.set(event.index, event.content_block.id);
+                  }
+
+                  // Skip tool-input-start to avoid parsing issues
+                  // Tool call will be emitted via assistant message with complete input
+                  console.log('STREAM: Skipping tool-input-start, deferring everything to assistant message');
                 }
               } else if (event.type === 'content_block_delta') {
                 if (event.delta?.type === 'text_delta') {
@@ -229,6 +341,10 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                       }
                     }
                   });
+                } else if (event.delta?.type === 'input_json_delta') {
+                  // Temporarily disable tool-input-delta to avoid parsing issues
+                  // The complete tool input will be sent via tool-call event
+                  console.log('STREAM: input_json_delta received but skipping to avoid parsing issues. Partial:', JSON.stringify(event.delta.partial_json));
                 }
               } else if (event.type === 'content_block_stop') {
                 if (hasStartedTextBlock) {
@@ -238,9 +354,91 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                   });
                   hasStartedTextBlock = false;
                 }
+                // Note: Tool completion will be handled via the assistant message content
               }
-              // Don't emit tool-call-delta events to avoid AI SDK tool registration issues
-              // Claude Code handles tools internally
+            } catch (streamEventError) {
+              console.error('STREAM: Error processing stream event:', streamEventError, 'Event type:', event?.type);
+            }
+            } else if (message.type === 'assistant') {
+              // Handle assistant messages that may contain tool calls
+              const assistantMsg = message as SDKAssistantMessage;
+
+              console.log('STREAM: Assistant message received, content blocks:', assistantMsg.message.content?.length || 0);
+
+              if (assistantMsg.message.content) {
+                for (const block of assistantMsg.message.content) {
+                  console.log('STREAM: Processing assistant content block:', block.type);
+
+                  // Handle tool use blocks (tool calls) with complete input
+                  if (block.type === 'tool_use') {
+                    const toolUse = block as BetaToolUseBlock;
+                    console.log('STREAM: Assistant tool use detected:', toolUse.name, toolUse.id, 'input keys:', Object.keys(toolUse.input || {}));
+
+                    try {
+                      // Follow OpenAI sample pattern: use 'input' as JSON string, not 'args'
+                      const toolArgs = toolUse.input || {};
+                      console.log('STREAM: Raw tool args from Claude Code:', JSON.stringify(toolArgs, null, 2));
+
+                      // Convert to JSON string like OpenAI does
+                      const inputString = JSON.stringify(toolArgs);
+                      console.log('STREAM: Tool input as JSON string:', inputString);
+
+                      controller.enqueue({
+                        type: 'tool-call',
+                        toolCallId: toolUse.id,
+                        toolName: toolUse.name,
+                        input: inputString,
+                      });
+
+                      console.log('STREAM: Tool-call emitted (OpenAI format) for:', toolUse.name);
+                    } catch (error) {
+                      console.error('STREAM: Error processing tool-call:', error, 'Tool:', toolUse.name, 'Raw input:', toolUse.input);
+                    }
+                  }
+                }
+              }
+            } else if (message.type === 'user') {
+              // Handle user messages that contain tool results
+              const userMsg = message as SDKUserMessage;
+              console.log('STREAM: User message received, content blocks:', userMsg.message.content?.length || 0);
+
+              const messageContent = userMsg.message.content;
+              if (Array.isArray(messageContent)) {
+                for (const block of messageContent) {
+                  if (typeof block === 'object' && 'type' in block) {
+                    console.log('STREAM: Processing user content block:', block.type);
+
+                    // Handle tool result blocks
+                    if (block.type === 'tool_result') {
+                      const toolResult = block as BetaToolResultBlock;
+                      console.log('STREAM: Tool result detected:', toolResult.tool_use_id, 'content length:', typeof toolResult.content === 'string' ? toolResult.content.length : 'object');
+
+                      try {
+                        // Ensure result is properly formatted
+                        let resultContent: string;
+                        if (typeof toolResult.content === 'string') {
+                          resultContent = toolResult.content;
+                        } else if (toolResult.content != null) {
+                          resultContent = JSON.stringify(toolResult.content);
+                        } else {
+                          resultContent = '';
+                        }
+
+                        controller.enqueue({
+                          type: 'tool-result',
+                          toolCallId: toolResult.tool_use_id,
+                          toolName: 'unknown', // We'll need to track tool names separately
+                          result: resultContent,
+                        });
+
+                        console.log('STREAM: Tool-result emitted successfully for:', toolResult.tool_use_id);
+                      } catch (error) {
+                        console.error('STREAM: Error processing tool-result:', error, 'for tool:', toolResult.tool_use_id);
+                      }
+                    }
+                  }
+                }
+              }
             } else if (message.type === 'result') {
               const resultMessage = message as SDKResultMessage;
               finishReason = self.mapFinishReason(resultMessage);
