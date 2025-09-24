@@ -1,6 +1,6 @@
 {
   "name": "ai-sdk-cc-provider",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Claude Code provider for Vercel AI SDK using @anthropic-ai/claude-code",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
