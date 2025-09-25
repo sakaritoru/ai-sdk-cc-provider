@@ -32,7 +32,7 @@ import { generateText } from 'ai';
 import { claudeCode, getCommonClaudeCodeTools } from 'ai-sdk-cc-provider';
 
 const result = await generateText({
-  model: claudeCode('claude-3-5-sonnet-20241022', {
+  model: claudeCode('claude-sonnet-4-0', {
     options: {
       cwd: '/path/to/your/project',
       maxTurns: 3,
@@ -52,7 +52,7 @@ import { generateText } from 'ai';
 import { claudeCode } from 'ai-sdk-cc-provider';
 
 const result = await generateText({
-  model: claudeCode('claude-3-5-sonnet-20241022'),
+  model: claudeCode('claude-sonnet-4-0'),
   tools: {
     Read: claudeCode.tools.Read,
     Write: claudeCode.tools.Write,
@@ -85,23 +85,6 @@ tools: getCommonClaudeCodeTools()
 
 ## Configuration
 
-### Provider Settings
-
-```typescript
-import { createClaudeCode } from 'ai-sdk-cc-provider';
-
-const provider = createClaudeCode();
-
-const model = provider('claude-3-5-sonnet-20241022', {
-  options: {
-    cwd: process.cwd(),
-    maxTurns: 5,
-    allowedTools: ['file_read', 'file_write', 'bash'],
-    additionalDirectories: ['/custom/path'],
-  },
-});
-```
-
 ### Available Options
 
 | Option | Type | Description |
@@ -118,9 +101,11 @@ const model = provider('claude-3-5-sonnet-20241022', {
 
 This provider works with Claude models available through Claude Code:
 
-- `claude-3-5-sonnet-20241022`
-- `claude-3-5-haiku-20241022`
-- `claude-3-opus-20240229`
+- `claude-opus-4-1` (Claude Opus 4.1)
+- `claude-opus-4-0` (Claude Opus 4)
+- `claude-sonnet-4-0` (Claude Sonnet 4)
+- `claude-3-7-sonnet-latest` (Claude Sonnet 3.7)
+- `claude-3-5-haiku-latest` (Claude Haiku 3.5)
 
 ## Available Tools
 
@@ -203,10 +188,9 @@ import { generateText } from 'ai';
 import { claudeCode, getFileTools } from 'ai-sdk-cc-provider';
 
 const result = await generateText({
-  model: claudeCode('claude-3-5-sonnet-20241022', {
+  model: claudeCode('claude-sonnet-4-0', {
     options: {
       cwd: './src',
-      allowedTools: ['Read', 'Write', 'Edit'],
     },
   }),
   tools: getFileTools(),
@@ -220,7 +204,7 @@ import { streamText } from 'ai';
 import { claudeCode } from 'ai-sdk-cc-provider';
 
 const { textStream, reasoningStream } = await streamText({
-  model: claudeCode('claude-3-5-sonnet-20241022', {
+  model: claudeCode('claude-opus-4-1', {
     options: {
       maxTurns: 10,
       maxThinkingTokens: 10000, // Enable reasoning mode
@@ -245,7 +229,7 @@ for await (const textPart of textStream) {
 ```typescript
 import { claudeCode } from 'ai-sdk-cc-provider';
 
-const model = claudeCode('claude-3-5-sonnet-20241022', {
+const model = claudeCode('claude-sonnet-4-0', {
   options: {
     mcpServers: {
       'custom-tools': {
@@ -264,7 +248,7 @@ import { generateText } from 'ai';
 import { claudeCode } from 'ai-sdk-cc-provider';
 
 const result = await generateText({
-  model: claudeCode('claude-3-5-sonnet-20241022', {
+  model: claudeCode('claude-opus-4-1', {
     options: {
       maxThinkingTokens: 20000, // Enable extended reasoning
       maxTurns: 3,
@@ -283,42 +267,24 @@ console.log('Reasoning tokens used:', result.usage?.reasoningTokens);
 import { getAllClaudeCodeTools } from 'ai-sdk-cc-provider';
 
 const result = await generateText({
-  model: claudeCode('claude-3-5-sonnet-20241022'),
+  model: claudeCode('claude-sonnet-4-0'),
   tools: getAllClaudeCodeTools(), // All 13 standard tools
   prompt: 'Help me analyze and refactor my codebase',
 });
 ```
 
-## Environment Variables
-
-Claude Code will automatically use your configured Anthropic API key. You can also set:
-
-```bash
-ANTHROPIC_API_KEY=your_api_key_here
-```
 
 ## Requirements
 
 - Node.js 18+ or Bun
 - [Claude Code CLI](https://claude.ai/code) installed and configured
 - AI SDK v5+ (`ai` package - peer dependency)
-- Valid Anthropic API key
 
 ## Setup
 
-1. Install Claude Code CLI (if not already installed):
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-2. Configure your API key:
-```bash
-claude-code auth
-```
-
-3. For file operations, ensure proper permissions:
+For file operations, ensure proper permissions:
 ```typescript
-const model = claudeCode('claude-3-5-sonnet-20241022', {
+const model = claudeCode('claude-sonnet-4-0', {
   options: {
     cwd: process.cwd(),
     additionalDirectories: [process.cwd()],
@@ -356,7 +322,7 @@ If you get errors like `AI_NoSuchToolError: Model tried to call unavailable tool
 1. **Text-only usage**: For simple text generation without tools:
 ```typescript
 const result = await generateText({
-  model: claudeCode('claude-3-5-sonnet-20241022'),
+  model: claudeCode('claude-sonnet-4-0'),
   // No tools property needed for text-only
   prompt: 'Explain how React hooks work',
 });
@@ -365,7 +331,7 @@ const result = await generateText({
 2. **File operations**: Ensure Claude Code is properly set up:
 ```typescript
 const result = await generateText({
-  model: claudeCode('claude-3-5-sonnet-20241022', {
+  model: claudeCode('claude-sonnet-4-0', {
     options: {
       cwd: process.cwd(),
       additionalDirectories: [process.cwd()],
@@ -376,12 +342,6 @@ const result = await generateText({
 });
 ```
 
-3. **API Key issues**: Make sure your Anthropic API key is configured:
-```bash
-export ANTHROPIC_API_KEY=your_api_key_here
-# or
-claude-code auth
-```
 
 ### Common Issues
 
