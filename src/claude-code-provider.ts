@@ -36,6 +36,25 @@ interface ToolDefinition {
   parameters: Record<string, unknown>;
 }
 
+// Tool tracking for streaming
+interface OngoingToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+  hasFinished: boolean;
+}
+
+// Helper function to check if string is parsable JSON
+function isParsableJson(str: string): boolean {
+  if (!str || str.trim() === '') return false;
+  try {
+    JSON.parse(str);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class ClaudeCodeLanguageModel implements LanguageModelV2 {
   readonly specificationVersion = 'v2';
   readonly defaultObjectGenerationMode = undefined;
@@ -255,6 +274,9 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
     // Track tool blocks by index for proper ID mapping
     const toolBlockIds = new Map<number, string>();
 
+    // Track ongoing tool calls by index (following OpenAI pattern)
+    const toolCalls = new Map<number, OngoingToolCall>();
+
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       async start(controller) {
         // Start with stream-start event like OpenAI
@@ -282,15 +304,29 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                   });
                   hasStartedTextBlock = true;
                 } else if (event.content_block?.type === 'tool_use') {
-                  // STREAM: Store tool mapping but skip tool-input events to avoid parsing issues
+                  // STREAM: Start tool input following OpenAI pattern
+
+                  const toolUseBlock = event.content_block as BetaToolUseBlock;
 
                   // Store the mapping between index and tool block ID
                   if (event.index !== undefined) {
-                    toolBlockIds.set(event.index, event.content_block.id);
-                  }
+                    toolBlockIds.set(event.index, toolUseBlock.id);
 
-                  // Skip tool-input-start to avoid parsing issues
-                  // Tool call will be emitted via assistant message with complete input
+                    // Initialize tool call tracking
+                    toolCalls.set(event.index, {
+                      id: toolUseBlock.id,
+                      name: toolUseBlock.name,
+                      arguments: '',
+                      hasFinished: false,
+                    });
+
+                    // Emit tool-input-start event
+                    controller.enqueue({
+                      type: 'tool-input-start',
+                      id: toolUseBlock.id,
+                      toolName: toolUseBlock.name,
+                    });
+                  }
                 }
               } else if (event.type === 'content_block_delta') {
                 if (event.delta?.type === 'text_delta') {
@@ -330,8 +366,43 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                     }
                   });
                 } else if (event.delta?.type === 'input_json_delta') {
-                  // Temporarily disable tool-input-delta to avoid parsing issues
-                  // The complete tool input will be sent via tool-call event
+                  // Handle tool input delta following OpenAI pattern
+                  if (event.index !== undefined && event.delta.partial_json) {
+                    const toolCall = toolCalls.get(event.index);
+                    if (toolCall && !toolCall.hasFinished) {
+                      const delta = event.delta.partial_json;
+
+                      // Accumulate arguments
+                      toolCall.arguments += delta;
+
+                      // Emit tool-input-delta
+                      controller.enqueue({
+                        type: 'tool-input-delta',
+                        id: toolCall.id,
+                        delta,
+                      });
+
+                      // Check if we have complete, parsable JSON
+                      if (isParsableJson(toolCall.arguments)) {
+                        // Mark as finished
+                        toolCall.hasFinished = true;
+
+                        // Emit tool-input-end
+                        controller.enqueue({
+                          type: 'tool-input-end',
+                          id: toolCall.id,
+                        });
+
+                        // Emit tool-call with complete input
+                        controller.enqueue({
+                          type: 'tool-call',
+                          toolCallId: toolCall.id,
+                          toolName: toolCall.name,
+                          input: toolCall.arguments,
+                        });
+                      }
+                    }
+                  }
                 }
               } else if (event.type === 'content_block_stop') {
                 if (hasStartedTextBlock) {
@@ -341,38 +412,76 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                   });
                   hasStartedTextBlock = false;
                 }
-                // Note: Tool completion will be handled via the assistant message content
+
+                // Handle incomplete tool calls (fallback for edge cases)
+                if (event.index !== undefined) {
+                  const toolCall = toolCalls.get(event.index);
+                  if (toolCall && !toolCall.hasFinished) {
+                    // Try to complete with current arguments if they're valid JSON
+                    if (isParsableJson(toolCall.arguments)) {
+                      toolCall.hasFinished = true;
+
+                      controller.enqueue({
+                        type: 'tool-input-end',
+                        id: toolCall.id,
+                      });
+
+                      controller.enqueue({
+                        type: 'tool-call',
+                        toolCallId: toolCall.id,
+                        toolName: toolCall.name,
+                        input: toolCall.arguments,
+                      });
+                    } else {
+                      // If arguments are not valid JSON, still emit tool-input-end
+                      // The tool will be handled via assistant message as fallback
+                      controller.enqueue({
+                        type: 'tool-input-end',
+                        id: toolCall.id,
+                      });
+                    }
+                  }
+                }
               }
             } catch (streamEventError) {
               // Error processing stream event
             }
             } else if (message.type === 'assistant') {
-              // Handle assistant messages that may contain tool calls
+              // Handle assistant messages as fallback for incomplete tool calls
               const assistantMsg = message as SDKAssistantMessage;
-
 
               if (assistantMsg.message.content) {
                 for (const block of assistantMsg.message.content) {
-
                   // Handle tool use blocks (tool calls) with complete input
                   if (block.type === 'tool_use') {
                     const toolUse = block as BetaToolUseBlock;
 
-                    try {
-                      // Follow OpenAI sample pattern: use 'input' as JSON string, not 'args'
-                      const toolArgs = toolUse.input || {};
+                    // Check if this tool was already handled during streaming
+                    let alreadyHandled = false;
+                    for (const [, toolCall] of toolCalls.entries()) {
+                      if (toolCall.id === toolUse.id && toolCall.hasFinished) {
+                        alreadyHandled = true;
+                        break;
+                      }
+                    }
 
-                      // Convert to JSON string like OpenAI does
-                      const inputString = JSON.stringify(toolArgs);
+                    // Only emit tool-call if it wasn't already handled during streaming
+                    if (!alreadyHandled) {
+                      try {
+                        // Follow OpenAI sample pattern: use 'input' as JSON string
+                        const toolArgs = toolUse.input || {};
+                        const inputString = JSON.stringify(toolArgs);
 
-                      controller.enqueue({
-                        type: 'tool-call',
-                        toolCallId: toolUse.id,
-                        toolName: toolUse.name,
-                        input: inputString,
-                      });
+                        controller.enqueue({
+                          type: 'tool-call',
+                          toolCallId: toolUse.id,
+                          toolName: toolUse.name,
+                          input: inputString,
+                        });
 
-                    } catch (error) {
+                      } catch (error) {
+                        // Ignore errors in fallback processing
+                      }
                     }
                   }
                 }
