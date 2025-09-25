@@ -350,6 +350,13 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                     controller.enqueue({
                       type: 'reasoning-start',
                       id: thinkingBlockId,
+                      providerMetadata: {
+                        'claude-code': {
+                          itemId: textBlockId,
+                          reasoningEncryptedContent: null,
+                          eventType: 'thinking_start'
+                        }
+                      }
                     });
                     hasStartedThinkingBlock = true;
                   }
@@ -361,6 +368,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                     delta: event.delta.thinking,
                     providerMetadata: {
                       'claude-code': {
+                        itemId: textBlockId,
                         eventType: 'thinking_delta'
                       }
                     }
@@ -547,6 +555,13 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                 controller.enqueue({
                   type: 'reasoning-end',
                   id: thinkingBlockId,
+                  providerMetadata: {
+                    'claude-code': {
+                      itemId: textBlockId,
+                      reasoningEncryptedContent: null,
+                      eventType: 'thinking_end'
+                    }
+                  }
                 });
                 hasStartedThinkingBlock = false;
               }
@@ -573,6 +588,13 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
             controller.enqueue({
               type: 'reasoning-end',
               id: thinkingBlockId,
+              providerMetadata: {
+                'claude-code': {
+                  itemId: textBlockId,
+                  reasoningEncryptedContent: null,
+                  eventType: 'thinking_end_error'
+                }
+              }
             });
           }
 
