@@ -207,12 +207,13 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
 
 
           return toolResultBlocks.map((block) => {
-              const toolResult = block as BetaToolResultBlock;
+              const toolResult = block;
 
               return {
                 type: 'tool-result' as const,
                 toolCallId: toolResult.tool_use_id || 'unknown',
                 toolName: 'unknown', // We'll need to track tool names
+                isError: toolResult.is_error || false,
                 result: typeof toolResult.content === 'string' ?
                   toolResult.content :
                   JSON.stringify(toolResult.content || toolResult),
@@ -505,7 +506,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
 
                     // Handle tool result blocks
                     if (block.type === 'tool_result') {
-                      const toolResult = block as BetaToolResultBlock;
+                      const toolResult = block;
 
                       try {
                         // Ensure result is properly formatted
@@ -521,6 +522,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
                         controller.enqueue({
                           type: 'tool-result',
                           toolCallId: toolResult.tool_use_id,
+                          isError: toolResult.is_error || false,
                           toolName: 'unknown', // We'll need to track tool names separately
                           result: resultContent,
                         });
