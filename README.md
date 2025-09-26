@@ -1,26 +1,22 @@
 # AI SDK Claude Code Provider
 
-A provider for [Vercel AI SDK](https://sdk.vercel.ai/) that enables the use of [Claude Code](https://claude.ai/code) with file operations, bash commands, and development tools.
+A provider for [Vercel AI SDK](https://sdk.vercel.ai/) that enables the use of [Claude Code](https://claude.ai/code) with development tools, file operations, and reasoning support.
 
-> **Note**: This provider supports AI SDK v5 with LanguageModelV2 specification.
+> **Note**: Supports AI SDK v5 with LanguageModelV2 specification.
 
 ## Features
 
-- 🛠️ **Development Tools**: Full access to Claude Code's built-in tools
-- 📁 **File Operations**: Read, write, and edit files with precision
-- 🖥️ **Bash Commands**: Execute shell commands and scripts
-- 🔍 **Web Search**: Search and fetch web content
-- 🔄 **Streaming Support**: Real-time response streaming with reasoning-delta
-- 🧠 **Reasoning Stream**: Support for thinking/reasoning deltas like OpenAI o1
-- 🛡️ **Type Safety**: Full TypeScript support with comprehensive type definitions
-- ⚡ **AI SDK Compatible**: Works seamlessly with Vercel's AI SDK ecosystem
+- 🛠️ **13 Built-in Tools**: File operations, bash commands, web search, project management
+- 🧠 **Reasoning Support**: Claude-style thinking with reasoning streams
+- 🔄 **Streaming**: Real-time response and tool execution streaming
+- ⚡ **AI SDK v5**: Compatible with latest Vercel AI SDK
+
+> **Note**: Currently supports `generateText` and `streamText`. Object generation (`generateObject`, `streamObject`) is not yet supported.
 
 ## Installation
 
 ```bash
 npm install ai-sdk-cc-provider
-# or
-bun add ai-sdk-cc-provider
 ```
 
 ## Quick Start
@@ -34,82 +30,84 @@ import { claudeCode, getCommonClaudeCodeTools } from 'ai-sdk-cc-provider';
 const result = await generateText({
   model: claudeCode('claude-sonnet-4-0', {
     options: {
-      cwd: '/path/to/your/project',
+      cwd: process.cwd(),
       maxTurns: 3,
+      allowedTools: ['Read', 'Write', 'Bash', 'Glob', 'Grep'],
     },
   }),
-  tools: getCommonClaudeCodeTools(), // Read, Bash, Grep, Glob
+  tools: getCommonClaudeCodeTools(), // Read, Write, Bash, Glob, Grep
   prompt: 'Help me create a simple React component',
 });
 
 console.log(result.text);
 ```
 
-### With Specific Tools (Direct Access)
+### Streaming Text with Reasoning
 
 ```typescript
-import { generateText } from 'ai';
-import { claudeCode } from 'ai-sdk-cc-provider';
+import { streamText } from 'ai';
+import { claudeCode, getFileTools } from 'ai-sdk-cc-provider';
 
-const result = await generateText({
-  model: claudeCode('claude-sonnet-4-0'),
-  tools: {
-    Read: claudeCode.tools.Read,
-    Write: claudeCode.tools.Write,
-    Bash: claudeCode.tools.Bash,
-  },
-  prompt: 'Read package.json and create a summary',
+const { textStream, reasoningStream } = await streamText({
+  model: claudeCode('claude-opus-4-1', {
+    options: {
+      cwd: process.cwd(),
+      maxThinkingTokens: 10000, // Enable reasoning mode
+      allowedTools: ['Read', 'Write', 'Edit', 'MultiEdit'],
+    },
+  }),
+  tools: getFileTools(),
+  prompt: 'Analyze my codebase and suggest improvements',
 });
+
+// Stream reasoning deltas (thinking process)
+for await (const reasoning of reasoningStream || []) {
+  process.stdout.write(reasoning.delta);
+}
+
+// Stream final text output
+for await (const text of textStream) {
+  process.stdout.write(text);
+}
 ```
 
-### Alternative Import Methods
+### Tool Access Methods
 
 ```typescript
-// Method 1: Direct access via claudeCode.tools
+// Method 1: Direct access
 tools: {
   Read: claudeCode.tools.Read,
   Bash: claudeCode.tools.Bash,
 }
 
-// Method 2: Import individual tools
-import { claudeCodeTools } from 'ai-sdk-cc-provider';
-tools: {
-  Read: claudeCodeTools.Read,
-  Bash: claudeCodeTools.Bash,
-}
-
-// Method 3: Use utility functions
-import { getCommonClaudeCodeTools } from 'ai-sdk-cc-provider';
-tools: getCommonClaudeCodeTools()
+// Method 2: Use utility functions
+import { getCommonClaudeCodeTools, getAllClaudeCodeTools } from 'ai-sdk-cc-provider';
+tools: getCommonClaudeCodeTools() // 5 most common tools
+tools: getAllClaudeCodeTools()    // All 13 tools
 ```
 
 ## Configuration
 
-### Available Options
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `cwd` | `string` | Working directory for file operations |
-| `maxTurns` | `number` | Maximum number of conversation turns |
-| `maxThinkingTokens` | `number` | Maximum tokens for reasoning/thinking mode |
-| `allowedTools` | `string[]` | Specific tools to enable |
-| `disallowedTools` | `string[]` | Tools to disable |
-| `additionalDirectories` | `string[]` | Additional directories to access |
-| `mcpServers` | `Record<string, any>` | MCP server configurations |
+```typescript
+const model = claudeCode('claude-sonnet-4-0', {
+  options: {
+    cwd: process.cwd(),                    // Working directory
+    maxTurns: 5,                          // Max conversation turns
+    maxThinkingTokens: 10000,             // Enable reasoning mode
+    allowedTools: ['Read', 'Write', 'Bash'], // Specific tools to enable
+    additionalDirectories: ['/src'],      // Extra accessible directories
+    mcpServers: { /* MCP configs */ },    // Custom MCP servers
+  },
+});
+```
 
 ## Supported Models
 
-This provider works with Claude models available through Claude Code:
-
-- `claude-opus-4-1` (Claude Opus 4.1)
-- `claude-opus-4-0` (Claude Opus 4)
-- `claude-sonnet-4-0` (Claude Sonnet 4)
-- `claude-3-7-sonnet-latest` (Claude Sonnet 3.7)
-- `claude-3-5-haiku-latest` (Claude Haiku 3.5)
+- `claude-opus-4-1` - Latest Opus with enhanced reasoning
+- `claude-sonnet-4-0` - High-performance Sonnet
+- `claude-3-5-haiku-latest` - Fast Haiku
 
 ## Available Tools
-
-This provider includes pre-defined Zod schemas for all Claude Code built-in tools:
 
 ### Tool Collections
 
@@ -117,72 +115,46 @@ This provider includes pre-defined Zod schemas for all Claude Code built-in tool
 import {
   getCommonClaudeCodeTools,    // Read, Write, Bash, Glob, Grep
   getFileTools,               // Read, Write, Edit, MultiEdit
-  getSearchTools,             // Glob, Grep
   getExecutionTools,          // Bash, BashOutput, KillShell
   getWebTools,               // WebFetch, WebSearch
   getProjectTools,           // Task, TodoWrite
-  getAllClaudeCodeTools,     // All 13 standard tools
-  claudeCodeTools,           // All individual tools
+  getAllClaudeCodeTools,     // All 13 tools
 } from 'ai-sdk-cc-provider';
 ```
 
-### Standard Tools by Category
+### 13 Built-in Tools
 
-**File Operations**
-- **Read**: Read file contents with optional offset/limit
-- **Write**: Write content to files
-- **Edit**: Perform exact string replacements
-- **MultiEdit**: Make multiple edits to a file in one operation
+**File Operations**: Read, Write, Edit, MultiEdit
+**Search**: Glob, Grep
+**Execution**: Bash, BashOutput, KillShell
+**Web**: WebFetch, WebSearch
+**Project**: Task, TodoWrite
 
-**Search & Exploration**
-- **Glob**: Fast file pattern matching
-- **Grep**: Powerful search with ripgrep (supports regex, file filtering)
-
-**Execution Environment**
-- **Bash**: Execute shell commands with optional background mode
-- **BashOutput**: Retrieve output from running/completed background shells
-- **KillShell**: Terminate background bash shells by ID
-
-**Specialized Agents**
-- **Task**: Launch specialized sub-agents for complex multi-step tasks
-
-**Web Tools**
-- **WebFetch**: Fetch and process web content
-- **WebSearch**: Search the web with domain filtering
-
-**Task Management**
-- **TodoWrite**: Create and manage structured task lists for coding sessions
-
-### Tool Access Patterns
+### Tool Usage
 
 ```typescript
-// Direct access (recommended)
+// Most common tools
+tools: getCommonClaudeCodeTools()
+
+// All tools
+tools: getAllClaudeCodeTools()
+
+// Specific categories
+tools: {
+  ...getFileTools(),
+  ...getWebTools(),
+}
+
+// Direct access
 tools: {
   Read: claudeCode.tools.Read,
   Bash: claudeCode.tools.Bash,
-}
-
-// Utility functions
-tools: getCommonClaudeCodeTools()
-tools: getAllClaudeCodeTools() // All 13 tools
-
-// Import individual tools
-tools: {
-  Read: claudeCodeTools.Read,
-  Bash: claudeCodeTools.Bash,
-}
-
-// Mix and match
-tools: {
-  ...getFileTools(),
-  ...getProjectTools(),
-  WebSearch: claudeCode.tools.WebSearch,
 }
 ```
 
 ## Examples
 
-### Basic File Operations
+### File Operations
 ```typescript
 import { generateText } from 'ai';
 import { claudeCode, getFileTools } from 'ai-sdk-cc-provider';
@@ -190,163 +162,59 @@ import { claudeCode, getFileTools } from 'ai-sdk-cc-provider';
 const result = await generateText({
   model: claudeCode('claude-sonnet-4-0', {
     options: {
-      cwd: './src',
+      allowedTools: ['Read', 'Write', 'Edit', 'MultiEdit'],
     },
   }),
   tools: getFileTools(),
-  prompt: 'Read the package.json file and create a simple README.md',
+  prompt: 'Read package.json and create a README.md',
 });
 ```
 
-### Streaming with Reasoning Support
+### Web Tools
 ```typescript
-import { streamText } from 'ai';
-import { claudeCode } from 'ai-sdk-cc-provider';
-
-const { textStream, reasoningStream } = await streamText({
-  model: claudeCode('claude-opus-4-1', {
-    options: {
-      maxTurns: 10,
-      maxThinkingTokens: 10000, // Enable reasoning mode
-      includePartialMessages: true,
-    },
-  }),
-  prompt: 'Think through this complex problem step by step...',
-});
-
-// Stream reasoning deltas (thinking process)
-for await (const reasoningPart of reasoningStream || []) {
-  console.log('Thinking:', reasoningPart.delta);
-}
-
-// Stream final text output
-for await (const textPart of textStream) {
-  process.stdout.write(textPart);
-}
-```
-
-### Custom MCP Servers
-```typescript
-import { claudeCode } from 'ai-sdk-cc-provider';
-
-const model = claudeCode('claude-sonnet-4-0', {
-  options: {
-    mcpServers: {
-      'custom-tools': {
-        type: 'stdio',
-        command: 'python',
-        args: ['custom_mcp_server.py'],
-      },
-    },
-  },
-});
-```
-
-### Reasoning Mode Example
-```typescript
-import { generateText } from 'ai';
-import { claudeCode } from 'ai-sdk-cc-provider';
+import { claudeCode, getWebTools } from 'ai-sdk-cc-provider';
 
 const result = await generateText({
-  model: claudeCode('claude-opus-4-1', {
+  model: claudeCode('claude-sonnet-4-0', {
     options: {
-      maxThinkingTokens: 20000, // Enable extended reasoning
-      maxTurns: 3,
+      allowedTools: ['WebFetch', 'WebSearch'],
     },
   }),
-  prompt: 'Analyze this complex algorithm and suggest optimizations...',
+  tools: getWebTools(),
+  prompt: 'Search for the latest TypeScript documentation',
 });
-
-console.log('Final answer:', result.text);
-console.log('Reasoning tokens used:', result.usage?.reasoningTokens);
 ```
 
-### Get All Tools at Once
-
+### With All Tools
 ```typescript
-import { getAllClaudeCodeTools } from 'ai-sdk-cc-provider';
+import { claudeCode, getAllClaudeCodeTools } from 'ai-sdk-cc-provider';
 
 const result = await generateText({
-  model: claudeCode('claude-sonnet-4-0'),
-  tools: getAllClaudeCodeTools(), // All 13 standard tools
+  model: claudeCode('claude-sonnet-4-0', {
+    options: {
+      allowedTools: ['Read', 'Write', 'Edit', 'MultiEdit', 'Bash', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task', 'TodoWrite'],
+    },
+  }),
+  tools: getAllClaudeCodeTools(), // All 13 tools
   prompt: 'Help me analyze and refactor my codebase',
 });
 ```
 
 
+
 ## Requirements
 
-- Node.js 18+ or Bun
-- [Claude Code CLI](https://claude.ai/code) installed and configured
-- AI SDK v5+ (`ai` package - peer dependency)
+- Node.js 18+
+- [Claude Code CLI](https://claude.ai/code) installed
+- AI SDK v5+ (`ai` package)
 
-## Setup
 
-For file operations, ensure proper permissions:
-```typescript
-const model = claudeCode('claude-sonnet-4-0', {
-  options: {
-    cwd: process.cwd(),
-    additionalDirectories: [process.cwd()],
-  },
-});
-```
-
-## API Reference
-
-### Types
-
-```typescript
-export interface ClaudeCodeProviderSettings {
-  options?: ClaudeCodeOptions;
-}
-
-export interface ClaudeCodeOptions {
-  cwd?: string;
-  maxTurns?: number;
-  maxThinkingTokens?: number; // Enable reasoning mode
-  allowedTools?: string[];
-  disallowedTools?: string[];
-  additionalDirectories?: string[];
-  mcpServers?: Record<string, any>;
-  includePartialMessages?: boolean;
-}
-```
 
 ## Troubleshooting
 
-### "No such tool" errors
-
-If you get errors like `AI_NoSuchToolError: Model tried to call unavailable tool 'Read'`:
-
-1. **Text-only usage**: For simple text generation without tools:
-```typescript
-const result = await generateText({
-  model: claudeCode('claude-sonnet-4-0'),
-  // No tools property needed for text-only
-  prompt: 'Explain how React hooks work',
-});
-```
-
-2. **File operations**: Ensure Claude Code is properly set up:
-```typescript
-const result = await generateText({
-  model: claudeCode('claude-sonnet-4-0', {
-    options: {
-      cwd: process.cwd(),
-      additionalDirectories: [process.cwd()],
-    },
-  }),
-  tools: getFileTools(),
-  prompt: 'Read and analyze my package.json',
-});
-```
-
-
-### Common Issues
-
-- **File not found**: Add directories to `additionalDirectories`
-- **Tool not available**: Make sure you're importing and using the correct tools
+- **Tool errors**: Ensure Claude Code CLI is properly installed and configured
+- **File access**: Add directories to `additionalDirectories` option
+- **Permission issues**: Check Claude Code has access to your project directory
 
 ## License
 

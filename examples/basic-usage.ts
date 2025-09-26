@@ -1,5 +1,6 @@
-import { generateText, streamText } from 'ai';
+import { generateObject, generateText, streamObject, streamText } from 'ai';
 import { claudeCode } from '../src';
+import { z } from 'zod';
 
 async function basicExample() {
   console.log('Basic Claude Code example...');
@@ -10,7 +11,7 @@ async function basicExample() {
         cwd: process.cwd(),
         maxTurns: 3,
         // Claude Code の内部ツールを使用
-        allowedTools: ['file_read', 'file_write', 'bash', 'glob', 'grep'],
+        allowedTools: ['file_read', 'bash', 'glob', 'grep'],
         // 現在のディレクトリを許可
         additionalDirectories: [process.cwd()],
         // bypassPermissions でツール使用を許可
@@ -22,6 +23,76 @@ async function basicExample() {
 
   console.log('Response:', result.text);
   console.log('Tool calls:', result.toolCalls?.length || 0);
+}
+
+async function basicObjectExample() {
+  console.log('Basic Claude Code example...');
+
+  try {
+    const result = await generateObject({
+      model: claudeCode('claude-3-5-sonnet-20241022', {
+        options: {
+          cwd: process.cwd(),
+          maxTurns: 3,
+          // Claude Code の内部ツールを使用
+          allowedTools: ['file_read', 'bash', 'glob', 'grep'],
+          // 現在のディレクトリを許可
+          additionalDirectories: [process.cwd()],
+          // bypassPermissions でツール使用を許可
+          permissionMode: 'bypassPermissions',
+        },
+      }),
+      schema: z.object({
+        projectSummary: z.string().describe('A summary of the TypeScript project structure'),
+        mainFiles: z.array(z.string()).describe('List of main files in the project'),
+      }),
+      prompt: 'このTypeScriptプロジェクトについて教えてください。どのようなファイルがありますか？',
+    });
+
+    console.log('Response:', result.object);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error('Error during object generation:', error);
+      console.log(
+        '\nNote: Object generation (generateObject/streamObject) is not yet supported by Claude Code provider. Please use generateText or streamText instead.'
+      );
+    }
+  }
+}
+
+async function basicStreamObjectExample() {
+  console.log('Basic Claude Code example...');
+
+  try {
+    const result = streamObject({
+      model: claudeCode('claude-3-5-sonnet-20241022', {
+        options: {
+          cwd: process.cwd(),
+          maxTurns: 3,
+          // Claude Code の内部ツールを使用
+          allowedTools: ['file_read', 'bash', 'glob', 'grep'],
+          // 現在のディレクトリを許可
+          additionalDirectories: [process.cwd()],
+          // bypassPermissions でツール使用を許可
+          permissionMode: 'bypassPermissions',
+        },
+      }),
+      schema: z.object({
+        projectSummary: z.string().describe('A summary of the TypeScript project structure'),
+        mainFiles: z.array(z.string()).describe('List of main files in the project'),
+      }),
+      prompt: 'このTypeScriptプロジェクトについて教えてください。どのようなファイルがありますか？',
+    });
+
+    await result.object;
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error('Error during object generation:', error);
+      console.log(
+        '\nNote: Object generation (generateObject/streamObject) is not yet supported by Claude Code provider. Please use generateText or streamText instead.'
+      );
+    }
+  }
 }
 
 async function streamingExample() {
@@ -102,14 +173,14 @@ async function simpleExample() {
 // Run examples
 async function main() {
   try {
-    // まず簡単な例から試す
-    // await simpleExample();
-    // await legalAssistantExample();
+    await simpleExample();
+    await legalAssistantExample();
 
-    // 次にファイルアクセスが必要な例（Claude Code環境が必要）
     console.log('\n--- File access examples (require Claude Code setup) ---');
     await basicExample();
     await streamingExample();
+    await basicObjectExample();
+    await basicStreamObjectExample();
   } catch (error) {
     console.error('Error running examples:', error);
     console.log('\nNote: File access examples require Claude Code to be properly installed and configured.');

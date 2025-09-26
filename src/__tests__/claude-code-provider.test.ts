@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { ClaudeCodeLanguageModel } from '../claude-code-provider';
+import { UnsupportedFunctionalityError } from '@ai-sdk/provider';
 
 describe('ClaudeCodeLanguageModel', () => {
   let model: ClaudeCodeLanguageModel;
@@ -16,7 +17,7 @@ describe('ClaudeCodeLanguageModel', () => {
   describe('constructor', () => {
     it('should set model properties correctly', () => {
       expect(model.modelId).toBe('claude-3-5-sonnet-20241022');
-      expect(model.specificationVersion).toBe('v1');
+      expect(model.specificationVersion).toBe('v2');
       expect(model.provider).toBe('claude-code');
       expect(model.defaultObjectGenerationMode).toBe(undefined);
     });
@@ -121,6 +122,83 @@ describe('ClaudeCodeLanguageModel', () => {
       };
       const warnings = (model as any).extractWarnings(resultMessage);
       expect(warnings).toHaveLength(0);
+    });
+  });
+
+  describe('object generation error handling', () => {
+    it('should throw UnsupportedFunctionalityError for schema option', () => {
+      const options = {
+        prompt: [{ role: 'user', content: 'test' }],
+        schema: { type: 'object', properties: {} },
+      };
+
+      expect(() => {
+        (model as any).checkForObjectGeneration(options);
+      }).toThrow(UnsupportedFunctionalityError);
+    });
+
+    it('should throw UnsupportedFunctionalityError for mode option', () => {
+      const options = {
+        prompt: [{ role: 'user', content: 'test' }],
+        mode: 'json',
+      };
+
+      expect(() => {
+        (model as any).checkForObjectGeneration(options);
+      }).toThrow(UnsupportedFunctionalityError);
+    });
+
+    it('should throw UnsupportedFunctionalityError for output option', () => {
+      const options = {
+        prompt: [{ role: 'user', content: 'test' }],
+        output: 'object',
+      };
+
+      expect(() => {
+        (model as any).checkForObjectGeneration(options);
+      }).toThrow(UnsupportedFunctionalityError);
+    });
+
+    it('should throw UnsupportedFunctionalityError for outputSchema option', () => {
+      const options = {
+        prompt: [{ role: 'user', content: 'test' }],
+        outputSchema: { type: 'object' },
+      };
+
+      expect(() => {
+        (model as any).checkForObjectGeneration(options);
+      }).toThrow(UnsupportedFunctionalityError);
+    });
+
+    it('should not throw for normal text generation options', () => {
+      const options = {
+        prompt: [{ role: 'user', content: 'test' }],
+        maxOutputTokens: 100,
+        temperature: 0.7,
+      };
+
+      expect(() => {
+        (model as any).checkForObjectGeneration(options);
+      }).not.toThrow();
+    });
+
+    it('should throw error with correct message', () => {
+      const options = {
+        prompt: [{ role: 'user', content: 'test' }],
+        schema: { type: 'object', properties: {} },
+      };
+
+      try {
+        (model as any).checkForObjectGeneration(options);
+      } catch (error) {
+        expect(error).toBeInstanceOf(UnsupportedFunctionalityError);
+        expect((error as UnsupportedFunctionalityError).message).toContain(
+          'Object generation (generateObject/streamObject) is not yet supported by Claude Code provider'
+        );
+        expect((error as UnsupportedFunctionalityError).message).toContain(
+          'Please use generateText or streamText instead'
+        );
+      }
     });
   });
 });

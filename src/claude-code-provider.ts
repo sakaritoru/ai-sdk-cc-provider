@@ -13,6 +13,7 @@ import {
   LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
   LanguageModelV2Prompt,
+  UnsupportedFunctionalityError,
 } from '@ai-sdk/provider';
 import { ClaudeCodeProviderSettings } from './types.js';
 
@@ -133,7 +134,23 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
     return warnings;
   }
 
+  private checkForObjectGeneration(options: Parameters<LanguageModelV2['doGenerate']>[0]) {
+    // Check if this is an object generation request by looking for schema or mode in the options
+    // AI SDK uses these parameters for generateObject/streamObject functionality
+    console.log(options.responseFormat?.type)
+    const hasObjectGenerationParams = options.responseFormat?.type === 'json';
+
+    if (hasObjectGenerationParams) {
+      throw new UnsupportedFunctionalityError({
+        functionality: 'Object generation (generateObject/streamObject)',
+        message: 'Object generation (generateObject/streamObject) is not yet supported by Claude Code provider. Please use generateText or streamText instead.',
+      });
+    }
+  }
+
   async doGenerate(options: Parameters<LanguageModelV2['doGenerate']>[0]) {
+    // Check for unsupported object generation functionality
+    this.checkForObjectGeneration(options);
     const { prompt, tools, ...restOptions } = options;
 
     const claudeCodePrompt = this.convertPromptToClaudeCodeFormat(prompt, tools);
@@ -249,6 +266,9 @@ export class ClaudeCodeLanguageModel implements LanguageModelV2 {
   }
 
   async doStream(options: Parameters<LanguageModelV2['doStream']>[0]) {
+    // Check for unsupported object generation functionality
+    this.checkForObjectGeneration(options);
+
     const { prompt, tools, ...restOptions } = options;
 
     const claudeCodePrompt = this.convertPromptToClaudeCodeFormat(prompt, tools);
