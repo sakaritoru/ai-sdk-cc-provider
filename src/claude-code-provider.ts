@@ -1,4 +1,4 @@
-import { query } from '@anthropic-ai/claude-code';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   SDKMessage,
   SDKAssistantMessage,
@@ -6,7 +6,7 @@ import type {
   SDKPartialAssistantMessage,
   SDKUserMessage,
   Options as ClaudeCodeOptions,
-} from '@anthropic-ai/claude-code';
+} from '@anthropic-ai/claude-agent-sdk';
 import {
   LanguageModelV2,
   LanguageModelV2CallWarning,

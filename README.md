@@ -103,9 +103,14 @@ const model = claudeCode('claude-sonnet-4-0', {
 
 ## Supported Models
 
-- `claude-opus-4-1` - Latest Opus with enhanced reasoning
-- `claude-sonnet-4-0` - High-performance Sonnet
-- `claude-3-5-haiku-latest` - Fast Haiku
+- `claude-opus-4-1` - Latest Opus (→ claude-opus-4-1-20250805)
+- `claude-opus-4-0` - Claude Opus 4 (→ claude-opus-4-20250514)
+- `claude-sonnet-4-5` - Best model for complex agents and coding (→ claude-sonnet-4-5-20250929)
+- `claude-sonnet-4-0` - High-performance Sonnet (→ claude-sonnet-4-20250514)
+- `claude-3-7-sonnet-latest` - Claude 3.7 Sonnet (→ claude-3-7-sonnet-20250219)
+- `claude-3-5-haiku-latest` - Fast Haiku (→ claude-3-5-haiku-20241022)
+
+For production, you can use specific model versions (e.g., `claude-sonnet-4-5-20250929`) to ensure consistent behavior.
 
 ## Available Tools
 
