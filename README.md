@@ -9,8 +9,8 @@ A provider for [Vercel AI SDK](https://sdk.vercel.ai/) that enables the use of [
 - 🔄 **Streaming**: Real-time response and tool execution streaming
 - ⚡ **AI SDK v5**: Compatible with latest Vercel AI SDK
 
-
 > **NOTE**
+>
 >
 > - Supports AI SDK v5 with LanguageModelV2 specification.
 > - Currently supports `generateText` and `streamText`. Object generation 
