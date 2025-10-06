@@ -2,8 +2,6 @@
 
 A provider for [Vercel AI SDK](https://sdk.vercel.ai/) that enables the use of [Claude Code](https://claude.ai/code) with development tools, file operations, and reasoning support.
 
-<img src="./assets/example.gif" />
-
 ## Features
 
 - 🛠️ **13 Built-in Tools**: File operations, bash commands, web search, project management
