@@ -2,7 +2,7 @@
 
 A provider for [Vercel AI SDK](https://sdk.vercel.ai/) that enables the use of [Claude Code](https://claude.ai/code) with development tools, file operations, and reasoning support.
 
-> **Note**: Supports AI SDK v5 with LanguageModelV2 specification.
+<img src="./assets/example.gif" />
 
 ## Features
 
@@ -11,7 +11,12 @@ A provider for [Vercel AI SDK](https://sdk.vercel.ai/) that enables the use of [
 - 🔄 **Streaming**: Real-time response and tool execution streaming
 - ⚡ **AI SDK v5**: Compatible with latest Vercel AI SDK
 
-> **Note**: Currently supports `generateText` and `streamText`. Object generation (`generateObject`, `streamObject`) is not yet supported.
+
+> **NOTE**
+>
+> - Supports AI SDK v5 with LanguageModelV2 specification.
+> - Currently supports `generateText` and `streamText`. Object generation 
+(`generateObject`, `streamObject`) is not yet supported.
 
 ## Installation
 
